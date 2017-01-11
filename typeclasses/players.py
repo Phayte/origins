@@ -21,8 +21,10 @@ possibility to connect with a guest account. The setting file accepts
 several more options for customizing the Guest account system.
 
 """
+from django.conf import settings
+from evennia import DefaultGuest
+from evennia.players.players import DefaultPlayer
 
-from evennia import DefaultPlayer, DefaultGuest
 
 class Player(DefaultPlayer):
     """
@@ -42,21 +44,25 @@ class Player(DefaultPlayer):
 
      key (string) - name of player
      name (string)- wrapper for user.username
-     aliases (list of strings) - aliases to the object. Will be saved to database as AliasDB entries but returned as strings.
+     aliases (list of strings) - aliases to the object. Will be saved to
+        database as AliasDB entries but returned as strings.
      dbref (int, read-only) - unique #id-number. Also "id" can be used.
      date_created (string) - time stamp of object creation
      permissions (list of strings) - list of permission strings
 
      user (User, read-only) - django User authorization object
-     obj (Object) - game object controlled by player. 'character' can also be used.
+     obj (Object) - game object controlled by player. 'character' can also
+        be used.
      sessions (list of Sessions) - sessions connected to this player
      is_superuser (bool, read-only) - if the connected user is a superuser
 
     * Handlers
 
      locks - lock-handler: use locks.add() to add new lock strings
-     db - attribute-handler: store/retrieve database attributes on this self.db.myattr=val, val=self.db.myattr
-     ndb - non-persistent attribute handler: same as db but does not create a database entry when storing data
+     db - attribute-handler: store/retrieve database attributes on
+        this self.db.myattr=val, val=self.db.myattr
+     ndb - non-persistent attribute handler: same as db but does not create
+        a database entry when storing data
      scripts - script-handler. Add new scripts to object with scripts.add()
      cmdset - cmdset-handler. Use cmdset.add() to add new cmdsets to object
      nicks - nick-handler. New nicks with nicks.add().
@@ -66,13 +72,15 @@ class Player(DefaultPlayer):
      msg(text=None, **kwargs)
      swap_character(new_character, delete_old_character=False)
      execute_cmd(raw_string, session=None)
-     search(ostring, global_search=False, attribute_name=None, use_nicks=False, location=None, ignore_errors=False, player=False)
+     search(ostring, global_search=False, attribute_name=None,
+        use_nicks=False, location=None, ignore_errors=False, player=False)
      is_typeclass(typeclass, exact=False)
      swap_typeclass(new_typeclass, clean_attributes=False, no_default=True)
      access(accessing_obj, access_type='read', default=False)
      check_permstring(permstring)
 
-    * Hook methods (when re-implementation, remember methods need to have self as first arg)
+    * Hook methods (when re-implementation, remember methods need to have
+        self as first arg)
 
      basetype_setup()
      at_player_creation()
@@ -91,6 +99,45 @@ class Player(DefaultPlayer):
      at_server_shutdown()
 
     """
+
+    def at_post_login(self, session=None):
+        """
+        Called at the end of the login process, just before letting
+        the player loose.
+
+        Args:
+            session (Session, optional): Session logging in, if any.
+
+        Notes:
+            This is called *before* an eventual Character's
+            `at_post_login` hook. By default it is used to set up
+            auto-puppeting based on `MULTISESSION_MODE`.
+
+        """
+        # if we have saved protocol flags on ourselves, load them here.
+        protocol_flags = self.attributes.get("_saved_protocol_flags", None)
+        if session and protocol_flags:
+            session.update_flags(**protocol_flags)
+
+        self._send_to_connect_channel("|G%s connected|n" % self.key)
+        if settings.MULTISESSION_MODE in (0, 1):
+            # in this mode we should have only one character available. We
+            # try to auto-connect to our last conneted object, if any
+            try:
+                self.puppet_object(session, self.db._last_puppet)
+            except RuntimeError:
+                self.msg("The Character does not exist.")
+                return
+        elif settings.MULTISESSION_MODE in (2, 3):
+            # In this mode we by default end up at a character selection
+            # screen. We execute look on the player.
+            # we make sure to clean up the _playable_characers list in case
+            # any was deleted in the interim.
+            self.db._playable_characters = [char for char in
+                                            self.db._playable_characters if
+                                            char]
+            self.execute_cmd("look", session=session)
+
     pass
 
 

@@ -4,9 +4,16 @@ Commands
 Commands describe the input the player can do to the game.
 
 """
+import re
 
+from django.conf import settings
 from evennia import Command as BaseCommand
-# from evennia import default_cmds
+from evennia.commands.default.player import MuxPlayerLookCommand
+from evennia.objects.models import ObjectDB
+from evennia.players.models import PlayerDB
+from evennia.server.models import ServerConfig
+from evennia.utils import logger
+from evennia.utils.evmenu import EvMenu
 
 
 class Command(BaseCommand):
@@ -31,7 +38,7 @@ class Command(BaseCommand):
     """
     pass
 
-#------------------------------------------------------------
+# ------------------------------------------------------------
 #
 # The default commands inherit from
 #
@@ -46,10 +53,10 @@ class Command(BaseCommand):
 # the functionality implemented in the parse() method, so be
 # careful with what you change.
 #
-#------------------------------------------------------------
+# ------------------------------------------------------------
 
-#from evennia.utils import utils
-#class MuxCommand(Command):
+# from evennia.utils import utils
+# class MuxCommand(Command):
 #    """
 #    This sets up the basis for a MUX command. The idea
 #    is that most other Mux-related commands should just
@@ -105,33 +112,36 @@ class Command(BaseCommand):
 #           self.cmdset - the cmdset from which this command was picked. Not
 #                         often used (useful for commands like 'help' or to
 #                         list all available commands etc)
-#           self.obj - the object on which this command was defined. It is often
-#                         the same as self.caller.
+#           self.obj - the object on which this command was defined. It is
+#                         often the same as self.caller.
 #
 #        A MUX command has the following possible syntax:
 #
-#          name[ with several words][/switch[/switch..]] arg1[,arg2,...] [[=|,] arg[,..]]
+#          name[ with several words][/switch[/switch..]] arg1[,arg2,...]
+#          [[=|,] arg[,..]]
 #
 #        The 'name[ with several words]' part is already dealt with by the
 #        cmdhandler at this point, and stored in self.cmdname (we don't use
 #        it here). The rest of the command is stored in self.args, which can
 #        start with the switch indicator /.
 #
-#        This parser breaks self.args into its constituents and stores them in the
-#        following variables:
+#        This parser breaks self.args into its constituents and stores them
+#        in the following variables:
 #          self.switches = [list of /switches (without the /)]
 #          self.raw = This is the raw argument input, including switches
-#          self.args = This is re-defined to be everything *except* the switches
+#          self.args = This is re-defined to be everything *except* the
+#                      switches
 #          self.lhs = Everything to the left of = (lhs:'left-hand side'). If
 #                     no = is found, this is identical to self.args.
 #          self.rhs: Everything to the right of = (rhs:'right-hand side').
 #                    If no '=' is found, this is None.
 #          self.lhslist - [self.lhs split into a list by comma]
 #          self.rhslist - [list of self.rhs split into a list by comma]
-#          self.arglist = [list of space-separated args (stripped, including '=' if it exists)]
+#          self.arglist = [list of space-separated args (stripped, including
+#                         '=' if it exists)]
 #
-#          All args and list members are stripped of excess whitespace around the
-#          strings, but case is preserved.
+#          All args and list members are stripped of excess whitespace around
+#          the strings, but case is preserved.
 #        """
 #        raw = self.args
 #        args = raw.strip()
@@ -168,17 +178,64 @@ class Command(BaseCommand):
 #        self.rhslist = rhslist
 #
 #        # if the class has the player_caller property set on itself, we make
-#        # sure that self.caller is always the player if possible. We also create
-#        # a special property "character" for the puppeted object, if any. This
-#        # is convenient for commands defined on the Player only.
+#        # sure that self.caller is always the player if possible.
+#        # We also create  a special property "character" for the
+#        # puppeted object, if any. This is convenient for commands defined
+#        # on the Player only.
 #        if hasattr(self, "player_caller") and self.player_caller:
-#            if utils.inherits_from(self.caller, "evennia.objects.objects.DefaultObject"):
+#            if utils.inherits_from(
+#                   self.caller, "evennia.objects.objects.DefaultObject"):
 #                # caller is an Object/Character
 #                self.character = self.caller
 #                self.caller = self.caller.player
-#            elif utils.inherits_from(self.caller, "evennia.players.players.DefaultPlayer"):
+#            elif utils.inherits_from(
+#                   self.caller, "evennia.players.players.DefaultPlayer"):
 #                # caller was already a Player
 #                self.character = self.caller.get_puppet(self.session)
 #            else:
 #                self.character = None
-#
+
+
+class CmdOOCLook(MuxPlayerLookCommand):
+    """
+    look while out-of-character
+
+    Usage:
+      look
+
+    Look in the ooc state.
+    """
+
+    #This is an OOC version of the look command. Since a
+    #Player doesn't have an in-game existence, there is no
+    #concept of location or "self". If we are controlling
+    #a character, pass control over to normal look.
+
+    key = "look"
+    aliases = ["l", "ls"]
+    locks = "cmd:all()"
+    help_category = "General"
+
+    # this is used by the parent
+    player_caller = True
+
+    def func(self):
+        EvMenu(
+            self.caller,
+            menudata="menus.player_login",
+            cmd_on_exit=None
+        )
+
+        # self.player.msg("Hello World")
+        # "implement the ooc look command"
+        #
+        # if _MULTISESSION_MODE < 2:
+        #     # only one character allowed
+        #     self.msg("You are out-of-character (OOC).\nUse {w@ic{n to get "
+        #              "back into the game.")
+        #     return
+        #
+        # # call on-player look helper method
+        # self.msg(self.player.at_look(target=self.playable,
+        #                              session=self.session))
+

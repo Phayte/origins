@@ -16,6 +16,10 @@ own cmdsets by inheriting from them or directly from `evennia.CmdSet`.
 
 from evennia import default_cmds
 
+from commands.command import CmdOOCLook
+from commands.construct import CmdEngineer
+
+
 class CharacterCmdSet(default_cmds.CharacterCmdSet):
     """
     The `CharacterCmdSet` contains general in-game commands like `look`,
@@ -32,6 +36,7 @@ class CharacterCmdSet(default_cmds.CharacterCmdSet):
         #
         # any commands you add below will overload the default ones.
         #
+        self.add(CmdEngineer)
 
 
 class PlayerCmdSet(default_cmds.PlayerCmdSet):
@@ -51,6 +56,7 @@ class PlayerCmdSet(default_cmds.PlayerCmdSet):
         #
         # any commands you add below will overload the default ones.
         #
+        self.add(CmdOOCLook)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):
