@@ -3,7 +3,7 @@ from django.conf import settings
 
 def _invalid_selection(caller, error_msg=None):
     if error_msg:
-        caller.msg("|r{0}|n".format(error_msg))
+        caller.msg("\n|r{0}|n\n\n".format(error_msg))
 
 
 def _invalid_format(msg):
@@ -32,8 +32,8 @@ def _get_login_option(caller):
     else:
         desc = _invalid_format(desc.format("Unavailable"))
         goto = "start"
-        error_msg = "\nNo character currently selected. Please select " \
-                    "another option.\n\n"
+        error_msg = "No character currently selected. Please select " \
+                    "another option."
 
     return ({
                 "desc": desc,
@@ -53,9 +53,9 @@ def _get_select_character_option(caller):
         goto = "select_character"
     else:
         desc = _invalid_format(desc)
+        goto = "start"
         error_msg = "You must create a character before you select one. " \
                     "Please select another option."
-        goto = "start"
 
     return ({
                 "desc": desc,
@@ -76,8 +76,8 @@ def _get_create_character_option(caller):
     else:
         desc = _invalid_format(desc)
         goto = "start"
-        error_msg = "\nYou cannot create anymore characters. Please " \
-                    "select another option.\n\n"
+        error_msg = "You cannot create anymore characters. Please " \
+                    "select another option."
 
     return ({
                 "desc": desc,
@@ -97,7 +97,6 @@ def _get_view_sessions_option(caller):
                 "goto": goto,
                 "exec": lambda caller: _invalid_selection(caller, None)
             },)
-
 
 def start(caller):
     text = "Account: |g{0}|n".format(caller.key)
