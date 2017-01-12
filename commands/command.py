@@ -222,6 +222,7 @@ class CmdOOCLook(MuxPlayerLookCommand):
     def func(self):
         EvMenu(
             self.caller,
+            startnode="option_start",
             menudata="menus.player_login",
             cmd_on_exit=None
         )
