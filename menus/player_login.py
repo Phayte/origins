@@ -3,7 +3,7 @@ from django.conf import settings
 from evennia.objects.models import ObjectDB
 from evennia.utils.evmenu import underline_node_formatter
 
-from utils.format import format_invalid, format_valid
+from utils.format import format_invalid, format_valid, menu_nodetext_only_formatter, menu_set_node_formatter, menu_get_node_formatter
 
 
 # region Menu Options
@@ -58,7 +58,7 @@ def _get_option_quit():
 def _get_option_select_active_character(caller):
     options = ()
     # noinspection PyProtectedMember
-    for character in caller.db._playable_characters:
+    for character in caller.player.db._playable_characters:
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
@@ -74,19 +74,13 @@ def _get_option_select_active_character(caller):
     return options
 
 
-def _nodetext_only_formatter(nodetext, optionstext, caller=None):
-    return nodetext
-    
-def _set_node_formatter(caller, formatter):
-    caller.ndb._menutree._node_formatter = formatter
-
 def _get_option_get_character_name(caller):
-    previous_node_formatter = caller.ndb._menutree._node_formatter
-    caller.ndb._menutree._node_formatter = _nodetext_only_formatter
+    previous_node_formatter = menu_get_node_formatter(caller)
+    menu_set_node_formatter(caller, menu_nodetext_only_formatter)
     options = ({
                    "key": "",
                    "goto": "option_start",
-                   "exec": lambda caller: _set_node_formatter(caller, previous_node_formatter)
+                   "exec": lambda caller: menu_set_node_formatter(caller, previous_node_formatter)
                },
                {
                    "key": '_default',
@@ -112,16 +106,16 @@ def _get_option_get_character_password():
 def option_start(caller):
     num_chars = _get_num_characters(caller)
     max_chars = _get_max_characters(caller)
-    is_available_slots = caller.is_superuser or num_chars < max_chars
+    is_available_slots = caller.player.is_superuser or num_chars < max_chars
 
     # noinspection PyProtectedMember
-    last_puppet = caller.db._last_puppet
+    last_puppet = caller.player.db._last_puppet
     if last_puppet:
         selected_character_name = format_valid(last_puppet.key)
     else:
         selected_character_name = format_invalid("Unavailable")
 
-    num_sessions = len(caller.sessions.all())
+    num_sessions = len(caller.player.sessions.all())
 
     text = _generate_title(caller,
                            selected_character_name,
@@ -150,20 +144,17 @@ def option_select_character(caller):
 
 # noinspection PyUnusedLocal
 def option_create_character(caller):
-    text = "\n\nEnter a name (enter blank to abort):"
+    text = "Enter a character name (enter blank to cancel):"
     options = _get_option_get_character_name(caller)
     return text, options
 
 
 def option_validate_character_name(caller, raw_string):
-    #if not raw_string:
-        
-        
     existing_character = ObjectDB.objects.get_objs_with_key_and_typeclass(
         raw_string, settings.BASE_CHARACTER_TYPECLASS)
         
     if existing_character:
-        text = "Character name already used. Please try again: (enter " \
+        text = "Character name unavailable. Please try again: (enter " \
                "blank to cancel)"
         options = _get_option_get_character_name(caller)
     else:
@@ -191,7 +182,7 @@ def _generate_title(caller, selected_character_name, num_chars, max_chars,
                     is_available_slots, num_sessions):
     text = "Account: {0}  |  Character: {1}  |  Slots: {2}  | Sessions: {3}"
     text = text.format(
-        format_valid(caller.key),
+        format_valid(caller.player.key),
         selected_character_name,
         _get_slots(num_chars, max_chars, is_available_slots),
         format_valid(num_sessions)
@@ -206,11 +197,11 @@ def _display_invalid_msg(caller, error_msg=None):
 
 def _get_num_characters(caller):
     # noinspection PyProtectedMember
-    return len(caller.db._playable_characters)
+    return len(caller.player.db._playable_characters)
 
 
 def _get_max_characters(caller):
-    if caller.is_superuser:
+    if caller.player.is_superuser:
         return "Unlimited"
     else:
         return settings.MAX_NR_CHARACTERS if settings.MULTISESSION_MODE > 1 \
@@ -228,7 +219,7 @@ def _get_slots(num_char, max_char, is_available_slots):
 
 
 def _select_character(caller, puppet):
-    caller.db._last_puppet = puppet
+    caller.player.db._last_puppet = puppet
 
 
 def _create_new_character(caller, raw_string):
