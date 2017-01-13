@@ -1,5 +1,7 @@
 from django.conf import settings
+
 from evennia.objects.models import ObjectDB
+from evennia.utils.evmenu import underline_node_formatter
 
 from utils.format import format_invalid, format_valid
 
@@ -72,9 +74,22 @@ def _get_option_select_active_character(caller):
     return options
 
 
-def _get_option_get_character_name():
+def _nodetext_only_formatter(nodetext, optionstext, caller=None):
+    return nodetext
+    
+def _set_node_formatter(caller, formatter):
+    caller.ndb._menutree._node_formatter = formatter
+
+def _get_option_get_character_name(caller):
+    previous_node_formatter = caller.ndb._menutree._node_formatter
+    caller.ndb._menutree._node_formatter = _nodetext_only_formatter
     options = ({
-                   "key": "_default",
+                   "key": "",
+                   "goto": "option_start",
+                   "exec": lambda caller: _set_node_formatter(caller, previous_node_formatter)
+               },
+               {
+                   "key": '_default',
                    "goto": "option_validate_character_name"
                },)
     return options
@@ -135,23 +150,27 @@ def option_select_character(caller):
 
 # noinspection PyUnusedLocal
 def option_create_character(caller):
-    text = "Enter a character name: (enter blank to abort)"
-    options = _get_option_get_character_name()
+    text = "\n\nEnter a name (enter blank to abort):"
+    options = _get_option_get_character_name(caller)
     return text, options
 
 
 def option_validate_character_name(caller, raw_string):
+    #if not raw_string:
+        
+        
     existing_character = ObjectDB.objects.get_objs_with_key_and_typeclass(
         raw_string, settings.BASE_CHARACTER_TYPECLASS)
+        
     if existing_character:
         text = "Character name already used. Please try again: (enter " \
                "blank to cancel)"
-        options = _get_option_get_character_name()
-        # noinspection PyProtectedMember
-        caller.ndb._menutree.new_character_name = raw_string
+        options = _get_option_get_character_name(caller)
     else:
-        text = "Enter a password: (enter blank to abort)"
+        caller.ndb._menutree.new_character_name = raw_string
+        text = "Enter a password (enter blank to abort):"
         options = _get_option_get_character_password()
+        
     return text, options
 
 
@@ -215,4 +234,16 @@ def _select_character(caller, puppet):
 def _create_new_character(caller, raw_string):
     caller.msg(raw_string)
 
-    # endregion
+
+# def underline_node_formatter(nodetext, optionstext, caller=None):
+#     """
+#     Draws a node with underlines '_____' around it.
+#     """
+#     nodetext_width_max = max(m_len(line) for line in nodetext.split("\n"))
+#     options_width_max = max(m_len(line) for line in optionstext.split("\n"))
+#     total_width = max(options_width_max, nodetext_width_max)
+#     separator1 = "_" * total_width + "\n\n" if nodetext_width_max else ""
+#     separator2 = "\n" + "_" * total_width + "\n\n" if total_width else ""
+#     return separator1 + "|n" + nodetext + "|n" + separator2 + "|n" + optionstext
+    
+# endregion
