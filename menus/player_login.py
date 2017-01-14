@@ -1,13 +1,15 @@
 from django.conf import settings
 
 from evennia.objects.models import ObjectDB
-from evennia.utils.evmenu import underline_node_formatter
 
-from utils.format import format_invalid, format_valid, menu_nodetext_only_formatter, menu_set_node_formatter, menu_get_node_formatter
+from utils.format import format_invalid, format_valid
+from utils.menu import nodetext_only_formatter, reset_node_formatter, \
+    get_user_input_option
 
+MENU_TEXT_NEWCHAR_NAME = "Enter a character name (blank to abort):"
+MENU_TEXT_INITIAL_PASSWORD = "Enter a password (blank to abort):"
 
 # region Menu Options
-
 
 def _get_option(desc, goto, error_msg=None):
     return ({
@@ -55,10 +57,10 @@ def _get_option_quit():
     )
 
 
-def _get_option_select_active_character(caller):
+def _get_option_select_active_character(session):
     options = ()
     # noinspection PyProtectedMember
-    for character in caller.player.db._playable_characters:
+    for character in session.player.db._playable_characters:
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
@@ -73,58 +75,35 @@ def _get_option_select_active_character(caller):
 
     return options
 
-
-def _get_option_get_character_name(caller):
-    previous_node_formatter = menu_get_node_formatter(caller)
-    menu_set_node_formatter(caller, menu_nodetext_only_formatter)
-    options = ({
-                   "key": "",
-                   "goto": "option_start",
-                   "exec": lambda caller: menu_set_node_formatter(caller, previous_node_formatter)
-               },
-               {
-                   "key": '_default',
-                   "goto": "option_validate_character_name"
-               },)
-    return options
-
-
-def _get_option_get_character_password():
-    options = ({
-                   "key": "_default",
-                   "goto": "option_validate_character_password"
-               },)
-    return options
-
-
 # endregion
 
 
 # region Menu Selections
 
 
-def option_start(caller):
-    num_chars = _get_num_characters(caller)
-    max_chars = _get_max_characters(caller)
-    is_available_slots = caller.player.is_superuser or num_chars < max_chars
+def option_start(session):
+    reset_node_formatter(session)
 
-    # noinspection PyProtectedMember
-    last_puppet = caller.player.db._last_puppet
-    if last_puppet:
-        selected_character_name = format_valid(last_puppet.key)
+    num_chars = _get_num_characters(session)
+    max_chars = _get_max_characters(session)
+    is_available_slots = session.player.is_superuser or num_chars < max_chars
+
+    selected_puppet = _get_selected_puppet(session)
+    if selected_puppet:
+        selected_character_name = format_valid(selected_puppet.key)
     else:
         selected_character_name = format_invalid("Unavailable")
 
-    num_sessions = len(caller.player.sessions.all())
+    num_sessions = len(session.player.sessions.all())
 
-    text = _generate_title(caller,
+    text = _generate_title(session,
                            selected_character_name,
                            num_chars,
                            max_chars,
                            is_available_slots,
                            num_sessions)
 
-    options = _get_option_login(last_puppet)
+    options = _get_option_login(selected_puppet)
     options += _get_option_select_character(num_chars)
     options += _get_option_create_character(num_chars < max_chars)
     options += _get_option_view_sessions()
@@ -136,46 +115,84 @@ def option_start(caller):
 #     pass
 
 
-def option_select_character(caller):
+def option_select_character(session):
     text = "Choose your character:"
-    options = _get_option_select_active_character(caller)
+    options = _get_option_select_active_character(session)
     return text, options
 
 
 # noinspection PyUnusedLocal
-def option_create_character(caller):
-    text = "Enter a character name (enter blank to cancel):"
-    options = _get_option_get_character_name(caller)
+def option_create_character(session):
+    reset_node_formatter(session, nodetext_only_formatter)
+
+    text = MENU_TEXT_NEWCHAR_NAME
+    options = get_user_input_option("option_start",
+                                    "option_validate_character_name")
     return text, options
 
 
-def option_validate_character_name(caller, raw_string):
+def option_validate_character_name(session, raw_string):
+    character_name = raw_string.capitalize()
     existing_character = ObjectDB.objects.get_objs_with_key_and_typeclass(
-        raw_string, settings.BASE_CHARACTER_TYPECLASS)
-        
+        character_name, settings.BASE_CHARACTER_TYPECLASS)
+
     if existing_character:
-        text = "Character name unavailable. Please try again: (enter " \
-               "blank to cancel)"
-        options = _get_option_get_character_name(caller)
+        session.msg(format_invalid("\n{0} name already taken.\n\n".format(
+            character_name
+        )))
+        text = MENU_TEXT_NEWCHAR_NAME
+        options = get_user_input_option("option_start",
+                                        "option_validate_character_name")
     else:
-        caller.ndb._menutree.new_character_name = raw_string
+        session.msg(format_valid(character_name))
+        session.ndb._menutree.new_character_name = character_name
         text = "Enter a password (enter blank to abort):"
-        options = _get_option_get_character_password()
-        
-    return text, options
-
-
-def option_validate_character_password(caller, raw_string):
-    text = "Done",
-    options = ()
+        options = get_user_input_option("option_start",
+                                        "option_validate_password")
 
     return text, options
 
+
+def option_validate_password(session, raw_string):
+    session.ndb._menutree.new_password = raw_string
+    text = "Enter password again (enter blank to abort):"
+    options = get_user_input_option("option_start",
+                                    "option_validate_password2")
+    return text, options
+
+
+def option_validate_password2(session, raw_string):
+    if session.ndb._menutree.new_password == raw_string:
+        text = "Are you sure you want to create {0}? (|gY|n/|rN|n)".format(
+            format_valid(session.ndb._menutree.new_character_name))
+        options = (
+            {
+                "key": ("Yes", "Y"),
+                "goto": "nowhere"
+            },
+            {
+                "key": ("No", "N"),
+                "goto": "nowhere"
+            },
+        )
+    else:
+        session.msg(format_invalid("Passwords do not match!\n"))
+        text = MENU_TEXT_INITIAL_PASSWORD
+        options = get_user_input_option("option_start",
+                                        "option_validate_password")
+
+    return text, options
 
 # endregion
 
 
 # region Helpers
+
+
+def _get_selected_puppet(session):
+    if not hasattr(session.ndb._menutree, "selected_puppet"):
+        session.ndb._menutree.selected_puppet = session.player.db._last_puppet
+    return session.ndb._menutree.selected_puppet
 
 
 def _generate_title(caller, selected_character_name, num_chars, max_chars,
@@ -190,18 +207,18 @@ def _generate_title(caller, selected_character_name, num_chars, max_chars,
     return text
 
 
-def _display_invalid_msg(caller, error_msg=None):
+def _display_invalid_msg(session, error_msg=None):
     if error_msg:
-        caller.msg("\n{0}\n\n".format(format_invalid(error_msg)))
+        session.msg("\n{0}\n\n".format(format_invalid(error_msg)))
 
 
-def _get_num_characters(caller):
+def _get_num_characters(session):
     # noinspection PyProtectedMember
-    return len(caller.player.db._playable_characters)
+    return len(session.player.db._playable_characters)
 
 
-def _get_max_characters(caller):
-    if caller.player.is_superuser:
+def _get_max_characters(session):
+    if session.player.is_superuser:
         return "Unlimited"
     else:
         return settings.MAX_NR_CHARACTERS if settings.MULTISESSION_MODE > 1 \
@@ -218,13 +235,16 @@ def _get_slots(num_char, max_char, is_available_slots):
     return text
 
 
-def _select_character(caller, puppet):
-    caller.player.db._last_puppet = puppet
+def _select_character(session, puppet):
+    session.player.db._last_puppet = puppet
 
 
-def _create_new_character(caller, raw_string):
-    caller.msg(raw_string)
+def _create_new_character(session, raw_string):
+    session.msg(raw_string)
 
+
+def _login(session):
+    pass
 
 # def underline_node_formatter(nodetext, optionstext, caller=None):
 #     """
@@ -236,5 +256,5 @@ def _create_new_character(caller, raw_string):
 #     separator1 = "_" * total_width + "\n\n" if nodetext_width_max else ""
 #     separator2 = "\n" + "_" * total_width + "\n\n" if total_width else ""
 #     return separator1 + "|n" + nodetext + "|n" + separator2 + "|n" + optionstext
-    
+
 # endregion

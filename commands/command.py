@@ -224,6 +224,7 @@ class CmdOOCLook(MuxPlayerLookCommand):
             self.session,
             startnode="option_start",
             menudata="menus.player_login",
+            cmd_on_exit=None
         )
 
         # self.player.msg("Hello World")
