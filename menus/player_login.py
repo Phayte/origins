@@ -1,13 +1,15 @@
 from django.conf import settings
 
 from evennia.objects.models import ObjectDB
+from evennia.utils import create
 
 from utils.format import format_invalid, format_valid
 from utils.menu import nodetext_only_formatter, reset_node_formatter, \
-    get_user_input_option
+    get_user_input, get_user_yesno
 
 MENU_TEXT_NEWCHAR_NAME = "Enter a character name (blank to abort):"
 MENU_TEXT_INITIAL_PASSWORD = "Enter a password (blank to abort):"
+
 
 # region Menu Options
 
@@ -35,10 +37,10 @@ def _get_option_select_character(is_valid):
     )
 
 
-def _get_option_create_character(is_valid):
+def _get_option_create_new_character(is_valid):
     return _get_option(
         "Create new character",
-        "option_create_character" if is_valid else "option_start",
+        "option_create_new_character" if is_valid else "option_start",
         None if is_valid else "You cannot create anymore characters."
     )
 
@@ -64,8 +66,8 @@ def _get_option_select_active_character(session):
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
-                        "exec": lambda caller: _select_character(caller,
-                                                                 character)
+                        "exec": lambda caller: _set_selected_puppet(caller,
+                                                                    character)
                     },)
 
     options += ({
@@ -74,6 +76,7 @@ def _get_option_select_active_character(session):
                 },)
 
     return options
+
 
 # endregion
 
@@ -105,7 +108,7 @@ def option_start(session):
 
     options = _get_option_login(selected_puppet)
     options += _get_option_select_character(num_chars)
-    options += _get_option_create_character(num_chars < max_chars)
+    options += _get_option_create_new_character(num_chars < max_chars)
     options += _get_option_view_sessions()
     options += _get_option_quit()
     return text, options
@@ -122,78 +125,51 @@ def option_select_character(session):
 
 
 # noinspection PyUnusedLocal
-def option_create_character(session):
+def option_create_new_character(session):
     reset_node_formatter(session, nodetext_only_formatter)
 
-    text = MENU_TEXT_NEWCHAR_NAME
-    options = get_user_input_option("option_start",
-                                    "option_validate_character_name")
+    text = "Enter a character name (blank to abort):"
+    options = get_user_input(
+        "option_start",
+        "option_confirm_character",
+        default_exec=exec_validate_character_name)
+
     return text, options
 
 
-def option_validate_character_name(session, raw_string):
+def exec_validate_character_name(session, raw_string):
+    # TODO Fix the capitalization of multi part name.
     character_name = raw_string.capitalize()
     existing_character = ObjectDB.objects.get_objs_with_key_and_typeclass(
         character_name, settings.BASE_CHARACTER_TYPECLASS)
 
     if existing_character:
-        session.msg(format_invalid("\n{0} name already taken.\n\n".format(
-            character_name
-        )))
-        text = MENU_TEXT_NEWCHAR_NAME
-        options = get_user_input_option("option_start",
-                                        "option_validate_character_name")
-    else:
-        session.msg(format_valid(character_name))
-        session.ndb._menutree.new_character_name = character_name
-        text = "Enter a password (enter blank to abort):"
-        options = get_user_input_option("option_start",
-                                        "option_validate_password")
+        session.msg(format_invalid(
+            "\n{0} is already taken. Try again.\n\n".format(character_name)))
+        return "option_create_new_character"
 
+    session.msg(format_valid(character_name))
+    _set_new_character_name(session, character_name)
+
+
+def option_confirm_character(session):
+    text = "Are you sure you want to create {0} (|gY|n/|rN|n)?"
+    options = get_user_yesno("option_generate_character", "option_start")
     return text, options
 
 
-def option_validate_password(session, raw_string):
-    session.ndb._menutree.new_password = raw_string
-    text = "Enter password again (enter blank to abort):"
-    options = get_user_input_option("option_start",
-                                    "option_validate_password2")
+def option_generate_character(session):
+    _create_new_character(session)
+    text = "{0} has been created. Would you like to select this character " \
+           "(|gY|n/|rN|n)?".format(_get_new_character_name(session))
+    options = get_user_yesno("option_start", "option_start", )
     return text, options
 
-
-def option_validate_password2(session, raw_string):
-    if session.ndb._menutree.new_password == raw_string:
-        text = "Are you sure you want to create {0}? (|gY|n/|rN|n)".format(
-            format_valid(session.ndb._menutree.new_character_name))
-        options = (
-            {
-                "key": ("Yes", "Y"),
-                "goto": "nowhere"
-            },
-            {
-                "key": ("No", "N"),
-                "goto": "nowhere"
-            },
-        )
-    else:
-        session.msg(format_invalid("Passwords do not match!\n"))
-        text = MENU_TEXT_INITIAL_PASSWORD
-        options = get_user_input_option("option_start",
-                                        "option_validate_password")
-
-    return text, options
 
 # endregion
 
 
 # region Helpers
-
-
-def _get_selected_puppet(session):
-    if not hasattr(session.ndb._menutree, "selected_puppet"):
-        session.ndb._menutree.selected_puppet = session.player.db._last_puppet
-    return session.ndb._menutree.selected_puppet
-
 
 def _generate_title(caller, selected_character_name, num_chars, max_chars,
                     is_available_slots, num_sessions):
@@ -235,26 +211,44 @@ def _get_slots(num_char, max_char, is_available_slots):
     return text
 
 
-def _select_character(session, puppet):
-    session.player.db._last_puppet = puppet
+def _get_selected_puppet(session):
+    if not hasattr(session.ndb._menutree, "selected_puppet"):
+        _set_selected_puppet(session, session.player.db._last_puppet)
+    return session.ndb._menutree.selected_puppet
 
 
-def _create_new_character(session, raw_string):
-    session.msg(raw_string)
+def _set_selected_puppet(session, puppet):
+    session.ndb._menutree.selected_puppet = puppet
 
 
-def _login(session):
-    pass
+def _get_new_character_name(session):
+    return session.ndb._menutree.new_character_name
 
-# def underline_node_formatter(nodetext, optionstext, caller=None):
-#     """
-#     Draws a node with underlines '_____' around it.
-#     """
-#     nodetext_width_max = max(m_len(line) for line in nodetext.split("\n"))
-#     options_width_max = max(m_len(line) for line in optionstext.split("\n"))
-#     total_width = max(options_width_max, nodetext_width_max)
-#     separator1 = "_" * total_width + "\n\n" if nodetext_width_max else ""
-#     separator2 = "\n" + "_" * total_width + "\n\n" if total_width else ""
-#     return separator1 + "|n" + nodetext + "|n" + separator2 + "|n" + optionstext
+
+def _set_new_character_name(session, character_name):
+    session.ndb._menutree.new_character_name = character_name
+
+# TODO: THis needs a lot of work
+def _create_new_character(session):
+    key = _get_new_character_name(session)
+    start_location = ObjectDB.objects.get_id(settings.START_LOCATION)
+    default_home = ObjectDB.objects.get_id(settings.DEFAULT_HOME)
+    permissions = settings.PERMISSION_PLAYER_DEFAULT
+    typeclass = settings.BASE_CHARACTER_TYPECLASS
+    player = session.player
+
+    new_character = create.create_object(typeclass, key=key,
+                                         location=start_location,
+                                         home=default_home,
+                                         permissions=permissions)
+
+    # TODO: Need to fix
+    new_character.locks.add(
+        "puppet:id({0}) or pid({1}) or perm(Immortals) or pperm("
+        "Immortals)".format(new_character.id, player.id))
+    new_character.db.desc = "This is a new character."
+    player.db._playable_characters.append(new_character)
+
+    session.msg("New character created.")
 
 # endregion

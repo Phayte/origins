@@ -12,7 +12,7 @@ from evennia.commands.default.player import MuxPlayerLookCommand
 from evennia.objects.models import ObjectDB
 from evennia.players.models import PlayerDB
 from evennia.server.models import ServerConfig
-from evennia.utils import logger
+from evennia.utils import logger, utils
 from evennia.utils.evmenu import EvMenu
 
 
@@ -196,7 +196,7 @@ class Command(BaseCommand):
 #                self.character = None
 
 
-class CmdOOCLook(MuxPlayerLookCommand):
+class CmdOOCLook(utils.class_from_module(settings.COMMAND_DEFAULT_CLASS)):
     """
     look while out-of-character
 
@@ -216,15 +216,14 @@ class CmdOOCLook(MuxPlayerLookCommand):
     locks = "cmd:all()"
     help_category = "General"
 
-    # this is used by the parent
-    player_caller = True
 
     def func(self):
         EvMenu(
             self.session,
             startnode="option_start",
             menudata="menus.player_login",
-            cmd_on_exit=None
+            session=self.session,
+            cmd_on_exit=None,
         )
 
         # self.player.msg("Hello World")
