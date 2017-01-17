@@ -56,7 +56,7 @@ class PlayerCmdSet(default_cmds.PlayerCmdSet):
         #
         # any commands you add below will overload the default ones.
         #
-        #self.add(CmdOOCLook)
+        self.add(CmdOOCLook)
 
 
 class UnloggedinCmdSet(default_cmds.UnloggedinCmdSet):

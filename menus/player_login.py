@@ -62,12 +62,14 @@ def _get_option_quit():
 def _get_option_select_active_character(session):
     options = ()
     # noinspection PyProtectedMember
+    # TODO: Loop scoping causing issues
     for character in session.player.db._playable_characters:
+        current_character = character
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
-                        "exec": lambda caller: _set_selected_puppet(caller,
-                                                                    character)
+                        "exec": lambda caller:
+                        _set_selected_puppet(caller, current_character)
                     },)
 
     options += ({
@@ -114,8 +116,15 @@ def option_start(session):
     return text, options
 
 
-# def option_login(caller):
-#     pass
+def option_login(session):
+    try:
+        puppet = _get_selected_puppet(session)
+        session.player.puppet_object(session, puppet)
+        session.player.db._last_puppet = puppet
+    except RuntimeError as ex:
+        session.msg("You cannot login as {0}: {1}".format(puppet.key, ex))
+
+    return "", None
 
 
 def option_select_character(session):
@@ -152,6 +161,7 @@ def exec_validate_character_name(session, raw_string):
     _set_new_character_name(session, character_name)
 
 
+# noinspection PyUnusedLocal
 def option_confirm_character(session):
     text = "Are you sure you want to create {0} (|gY|n/|rN|n)?"
     options = get_user_yesno("option_generate_character", "option_start")
@@ -159,11 +169,17 @@ def option_confirm_character(session):
 
 
 def option_generate_character(session):
-    _create_new_character(session)
+    session.ndb._menutree.new_character = _create_new_character(session)
+
     text = "{0} has been created. Would you like to select this character " \
-           "(|gY|n/|rN|n)?".format(_get_new_character_name(session))
-    options = get_user_yesno("option_start", "option_start", )
+           "(|gY|n/|rN|n)?".format(session.ndb._menutree.new_character.key)
+    options = get_user_yesno("option_start", "option_start",
+                             yes_exec=exec_select_new_character)
     return text, options
+
+
+def exec_select_new_character(session):
+    _set_selected_puppet(session.ndb._menutree.new_character)
 
 
 # endregion
@@ -228,7 +244,7 @@ def _get_new_character_name(session):
 def _set_new_character_name(session, character_name):
     session.ndb._menutree.new_character_name = character_name
 
-# TODO: THis needs a lot of work
+
 def _create_new_character(session):
     key = _get_new_character_name(session)
     start_location = ObjectDB.objects.get_id(settings.START_LOCATION)
@@ -242,13 +258,13 @@ def _create_new_character(session):
                                          home=default_home,
                                          permissions=permissions)
 
-    # TODO: Need to fix
     new_character.locks.add(
         "puppet:id({0}) or pid({1}) or perm(Immortals) or pperm("
         "Immortals)".format(new_character.id, player.id))
-    new_character.db.desc = "This is a new character."
     player.db._playable_characters.append(new_character)
 
-    session.msg("New character created.")
+    session.msg("{0} has been created.".format(format_valid(key)))
+
+    return new_character
 
 # endregion
