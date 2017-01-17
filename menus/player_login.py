@@ -5,7 +5,7 @@ from evennia.utils import create
 
 from utils.format import format_invalid, format_valid
 from utils.menu import nodetext_only_formatter, reset_node_formatter, \
-    get_user_input, get_user_yesno
+    get_user_input, get_user_yesno, wrap_exec
 
 MENU_TEXT_NEWCHAR_NAME = "Enter a character name (blank to abort):"
 MENU_TEXT_INITIAL_PASSWORD = "Enter a password (blank to abort):"
@@ -45,6 +45,14 @@ def _get_option_create_new_character(is_valid):
     )
 
 
+def _get_option_delete_characters(is_valid):
+    return _get_option(
+        "Delete character",
+        "option_delete_character" if is_valid else "option_start",
+        None if is_valid else "You have no characters to delete."
+    )
+        
+
 def _get_option_view_sessions():
     return _get_option(
         "View active sessions",
@@ -64,12 +72,12 @@ def _get_option_select_active_character(session):
     # noinspection PyProtectedMember
     # TODO: Loop scoping causing issues
     for character in session.player.db._playable_characters:
-        current_character = character
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
-                        "exec": lambda caller:
-                        _set_selected_puppet(caller, current_character)
+                        "exec": wrap_exec(session, 
+                                          _set_selected_puppet, 
+                                          puppet=character)
                     },)
 
     options += ({
@@ -111,6 +119,7 @@ def option_start(session):
     options = _get_option_login(selected_puppet)
     options += _get_option_select_character(num_chars)
     options += _get_option_create_new_character(num_chars < max_chars)
+    options += _get_option_delete_characters(num_chars)
     options += _get_option_view_sessions()
     options += _get_option_quit()
     return text, options
@@ -179,7 +188,7 @@ def option_generate_character(session):
 
 
 def exec_select_new_character(session):
-    _set_selected_puppet(session.ndb._menutree.new_character)
+    _set_selected_puppet(session, session.ndb._menutree.new_character)
 
 
 # endregion
