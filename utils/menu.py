@@ -1,3 +1,6 @@
+def wrap_exec(caller, func_call, **kwargs):
+    return lambda caller: func_call(caller, **kwargs)
+
 def get_user_input(blank_goto, default_goto, blank_exec=None,
                           default_exec=None):
     options = ({
