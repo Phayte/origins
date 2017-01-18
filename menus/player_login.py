@@ -8,9 +8,6 @@ from utils.menu import nodetext_only_formatter, reset_node_formatter, \
     get_user_input, get_user_yesno, wrap_exec
 from utils.session import get_session_address
 
-MENU_TEXT_NEWCHAR_NAME = "Enter a character name (blank to abort):"
-MENU_TEXT_INITIAL_PASSWORD = "Enter a password (blank to abort):"
-
 
 def option_start(session):
     reset_node_formatter(session)
@@ -94,17 +91,17 @@ def exec_validate_character_name(session, raw_string):
         character_name, settings.BASE_CHARACTER_TYPECLASS)
 
     if existing_character:
-        session.msg(format_invalid(
-            "\n{0} is already taken. Try again.\n\n".format(character_name)))
+        _display_invalid_msg(
+            session, "{0} is already taken. Try again.".format(character_name))
         return "option_create_new_character"
 
-    session.msg(format_valid(character_name))
     _set_new_character_name(session, character_name)
 
 
 # noinspection PyUnusedLocal
 def option_confirm_new_character(session):
-    text = "Are you sure you want to create {0} (|gY|n/|rN|n)?"
+    text = "Are you sure you want to create {0} (|gY|n/|rN|n)?".format(
+        format_valid(_get_new_character_name(session)))
     options = get_user_yesno("option_generate_character", "option_start")
     return text, options
 
@@ -221,9 +218,8 @@ def _get_option_create_new_character(is_valid):
     return _get_option(
         "Create New Character",
         "option_create_new_character" if is_valid else "option_start",
-        None if is_valid else "You cannot create anymore characters. Please " \
-                              "contact the admin to increase your allowance."
-    )
+        None if is_valid else "You have no more slots. Please contact admin "
+                              "for help.")
 
 
 def _get_option_delete_characters(is_valid):
@@ -328,7 +324,7 @@ def _generate_title(caller, selected_character_name, num_chars, max_chars,
 
 def _display_invalid_msg(session, error_msg=None):
     if error_msg:
-        session.msg("\n*** {0} *** \n\n".format(format_invalid(error_msg)))
+        session.msg(format_invalid("\n*** {0} *** \n\n".format(error_msg)))
 
 
 def _get_num_characters(session):
@@ -397,8 +393,6 @@ def _create_new_character(session):
         "puppet:id({0}) or pid({1}) or perm(Immortals) or pperm("
         "Immortals)".format(new_character.id, player.id))
     player.db._playable_characters.append(new_character)
-
-    session.msg("{0} has been created.".format(format_valid(key)))
 
     return new_character
 
