@@ -23,7 +23,7 @@ def _get_option(desc, goto, error_msg=None):
 
 def _get_option_login(is_valid):
     return _get_option(
-        "Login into the universe",
+        "Login Into Universe",
         "option_login" if is_valid else "option_start",
         None if is_valid else "Please select a valid character."
     )
@@ -31,23 +31,24 @@ def _get_option_login(is_valid):
 
 def _get_option_select_character(is_valid):
     return _get_option(
-        "Select active character",
+        "Select Active Character",
         "option_select_character" if is_valid else "option_start",
-        None if is_valid else "Please create a character first."
+        None if is_valid else "You have no characters. Please create one first."
     )
 
 
 def _get_option_create_new_character(is_valid):
     return _get_option(
-        "Create new character",
+        "Create New Character",
         "option_create_new_character" if is_valid else "option_start",
-        None if is_valid else "You cannot create anymore characters."
+        None if is_valid else "You cannot create anymore characters. Please " \
+            "contact the admin to increase your allowance."
     )
 
 
 def _get_option_delete_characters(is_valid):
     return _get_option(
-        "Delete character",
+        "Delete Character",
         "option_delete_character" if is_valid else "option_start",
         None if is_valid else "You have no characters to delete."
     )
@@ -55,7 +56,7 @@ def _get_option_delete_characters(is_valid):
 
 def _get_option_view_sessions():
     return _get_option(
-        "View active sessions",
+        "View Active Sessions",
         "option_view_sessions",
     )
 
@@ -67,21 +68,40 @@ def _get_option_quit():
     )
 
 
-def _get_option_select_active_character(session):
+def _get_option_select_character_list(session):
     options = ()
-    # noinspection PyProtectedMember
-    # TODO: Loop scoping causing issues
     for character in session.player.db._playable_characters:
         options += ({
                         "desc": character.key,
                         "goto": "option_start",
                         "exec": wrap_exec(session, 
-                                          _set_selected_puppet, 
-                                          puppet=character)
+                                          _set_selected_character, 
+                                          character=character)
                     },)
 
     options += ({
-                    "desc": "Back",
+                    "desc": "Cancel",
+                    "goto": "option_start"
+                },)
+
+    return options
+
+
+def _get_option_delete_character_list(session):
+    options = ()
+    for character in session.player.db._playable_characters:
+        options += ({
+                        "desc": character.key,
+                        "goto": "option_confirm_delete_character",
+                        "exec": wrap_exec(session, 
+                                          _set_delete_character, 
+                                          character=character)
+                        
+                        # TODO: Store to be deleted char on session so you can confirm later
+                    },)
+
+    options += ({
+                    "desc": "Cancel",
                     "goto": "option_start"
                 },)
 
@@ -91,9 +111,6 @@ def _get_option_select_active_character(session):
 # endregion
 
 
-# region Menu Selections
-
-
 def option_start(session):
     reset_node_formatter(session)
 
@@ -101,9 +118,9 @@ def option_start(session):
     max_chars = _get_max_characters(session)
     is_available_slots = session.player.is_superuser or num_chars < max_chars
 
-    selected_puppet = _get_selected_puppet(session)
-    if selected_puppet:
-        selected_character_name = format_valid(selected_puppet.key)
+    selected_character = _get_selected_character(session)
+    if selected_character:
+        selected_character_name = format_valid(selected_character.key)
     else:
         selected_character_name = format_invalid("Unavailable")
 
@@ -116,7 +133,7 @@ def option_start(session):
                            is_available_slots,
                            num_sessions)
 
-    options = _get_option_login(selected_puppet)
+    options = _get_option_login(selected_character)
     options += _get_option_select_character(num_chars)
     options += _get_option_create_new_character(num_chars < max_chars)
     options += _get_option_delete_characters(num_chars)
@@ -124,23 +141,30 @@ def option_start(session):
     options += _get_option_quit()
     return text, options
 
+# region Option Login Chain
 
 def option_login(session):
     try:
-        puppet = _get_selected_puppet(session)
-        session.player.puppet_object(session, puppet)
-        session.player.db._last_puppet = puppet
+        character = _get_selected_character(session)
+        session.player.puppet_object(session, character)
+        session.player.db._last_puppet = character
     except RuntimeError as ex:
-        session.msg("You cannot login as {0}: {1}".format(puppet.key, ex))
+        session.msg("You cannot login as {0}: {1}".format(character.key, ex))
 
     return "", None
 
+# endregion
+
+# region Option Select Character
 
 def option_select_character(session):
-    text = "Choose your character:"
-    options = _get_option_select_active_character(session)
+    text = "Select a character:"
+    options = _get_option_select_character_list(session)
     return text, options
 
+# endregion
+
+# region Option Create New Character
 
 # noinspection PyUnusedLocal
 def option_create_new_character(session):
@@ -188,11 +212,25 @@ def option_generate_character(session):
 
 
 def exec_select_new_character(session):
-    _set_selected_puppet(session, session.ndb._menutree.new_character)
-
+    _set_selected_character(session, session.ndb._menutree.new_character)
 
 # endregion
 
+# region Option Delete Character
+
+def option_delete_character(session):
+    text = "Choose character to delete:"
+    options = _get_option_delete_character_list(session)
+    return text, options
+    
+
+def option_confirm_delete_character(session):
+    text = "Are you sure you want to |r*** PERMANENTLY DELETE {0} ***|n?  " \
+           "(|gY|n/|rN|n)?".format(_get_delete_character(session).key)
+    options = get_user_yesno("option_start", "option_start")
+    return text, options
+
+# endregion
 
 # region Helpers
 
@@ -210,7 +248,7 @@ def _generate_title(caller, selected_character_name, num_chars, max_chars,
 
 def _display_invalid_msg(session, error_msg=None):
     if error_msg:
-        session.msg("\n{0}\n\n".format(format_invalid(error_msg)))
+        session.msg("\n*** {0} *** \n\n".format(format_invalid(error_msg)))
 
 
 def _get_num_characters(session):
@@ -236,14 +274,14 @@ def _get_slots(num_char, max_char, is_available_slots):
     return text
 
 
-def _get_selected_puppet(session):
-    if not hasattr(session.ndb._menutree, "selected_puppet"):
-        _set_selected_puppet(session, session.player.db._last_puppet)
-    return session.ndb._menutree.selected_puppet
+def _get_selected_character(session):
+    if not hasattr(session.ndb._menutree, "selected_character"):
+        _set_selected_character(session, session.player.db._last_puppet)
+    return session.ndb._menutree.selected_character
 
 
-def _set_selected_puppet(session, puppet):
-    session.ndb._menutree.selected_puppet = puppet
+def _set_selected_character(session, character):
+    session.ndb._menutree.selected_character = character
 
 
 def _get_new_character_name(session):
@@ -253,6 +291,11 @@ def _get_new_character_name(session):
 def _set_new_character_name(session, character_name):
     session.ndb._menutree.new_character_name = character_name
 
+def _get_delete_character(session):
+    return session.ndb._menutree.delete_character
+
+def _set_delete_character(session, character):
+    session.ndb._menutree.delete_character = character
 
 def _create_new_character(session):
     key = _get_new_character_name(session)
