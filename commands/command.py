@@ -4,15 +4,8 @@ Commands
 Commands describe the input the player can do to the game.
 
 """
-import re
 
-from django.conf import settings
 from evennia import Command as BaseCommand
-from evennia.commands.default.player import MuxPlayerLookCommand
-from evennia.objects.models import ObjectDB
-from evennia.players.models import PlayerDB
-from evennia.server.models import ServerConfig
-from evennia.utils import logger, utils
 from evennia.utils.evmenu import EvMenu
 
 
@@ -196,7 +189,7 @@ class Command(BaseCommand):
 #                self.character = None
 
 
-class CmdOOCLook(utils.class_from_module(settings.COMMAND_DEFAULT_CLASS)):
+class CmdOOCLook(Command):
     """
     look while out-of-character
 
@@ -223,19 +216,36 @@ class CmdOOCLook(utils.class_from_module(settings.COMMAND_DEFAULT_CLASS)):
             startnode="option_start",
             menudata="menus.player_login",
             session=self.session,
+            # TODO: Delete eventually, left here for ease of debugging
             cmd_on_exit=None,
         )
 
-        # self.player.msg("Hello World")
-        # "implement the ooc look command"
-        #
-        # if _MULTISESSION_MODE < 2:
-        #     # only one character allowed
-        #     self.msg("You are out-of-character (OOC).\nUse {w@ic{n to get "
-        #              "back into the game.")
-        #     return
-        #
-        # # call on-player look helper method
-        # self.msg(self.player.at_look(target=self.playable,
-        #                              session=self.session))
+class CmdOOC(Command):
+
+    key = "@ooc"
+    locks = "cmd:pperm(Players)"
+    aliases = "@unpuppet"
+    help_category = "General"
+
+    player_caller = True
+
+    def func(self):
+        player = self.player
+        session = self.session
+
+        current_character = player.get_puppet(session)
+        player.db._last_puppet = current_character
+
+        try:
+            player.unpuppet_object(session)
+
+            EvMenu(
+                self.session,
+                startnode="option_start",
+                menudata="menus.player_login",
+                session=self.session,
+            )
+        except RuntimeError as ex:
+            self.msg("|rUnable to return to account menu:{0}".format(ex))
+
 
