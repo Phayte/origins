@@ -167,7 +167,7 @@ def exec_abort_delete_character(session):
 
 # endregion
 
-# region View Sessions
+# region Option View Sessions
 
 def option_view_sessions(session):
     text = "Select a session to disconnect:"
